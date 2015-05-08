@@ -24,6 +24,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Point;
 import android.graphics.PorterDuff;
+import android.os.Build;
 import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.view.LayoutInflater;
@@ -59,6 +60,9 @@ public class ShowcaseView extends RelativeLayout
     private int showcaseY = -1;
     private float scaleMultiplier = 1f;
 
+    private CalculateTextOnPreDraw draw=null;
+    private UpdateOnGlobalLayout globalLayout=null;
+
     // Touch items
     private boolean hasCustomClickListener = false;
     private boolean blockTouches = true;
@@ -69,27 +73,34 @@ public class ShowcaseView extends RelativeLayout
     private boolean hasNoTarget = false;
     private boolean shouldCentreText;
     private Bitmap bitmapBuffer;
-
+    private Activity mActivity=null;
     // Animation items
     private long fadeInMillis;
     private long fadeOutMillis;
     private boolean isShowing;
 
-    protected ShowcaseView(Context context, boolean newStyle) {
+    public ShowcaseView(Context context, boolean newStyle) {
         this(context, null, R.styleable.CustomTheme_showcaseViewStyle, newStyle);
+        if(context instanceof Activity){
+            mActivity=(Activity)context;
+        }
     }
 
-    protected ShowcaseView(Context context, AttributeSet attrs, int defStyle, boolean newStyle) {
+    public ShowcaseView(Context context, AttributeSet attrs, int defStyle, boolean newStyle) {
         super(context, attrs, defStyle);
-
+        if(context instanceof Activity){
+            mActivity=(Activity)context;
+        }
         ApiUtils apiUtils = new ApiUtils();
         animationFactory = new AnimatorAnimationFactory();
         showcaseAreaCalculator = new ShowcaseAreaCalculator();
         shotStateStore = new ShotStateStore(context);
 
         apiUtils.setFitsSystemWindowsCompat(this);
-        getViewTreeObserver().addOnPreDrawListener(new CalculateTextOnPreDraw());
-        getViewTreeObserver().addOnGlobalLayoutListener(new UpdateOnGlobalLayout());
+        draw=new CalculateTextOnPreDraw();
+        getViewTreeObserver().addOnPreDrawListener(draw);
+        globalLayout=new UpdateOnGlobalLayout();
+        getViewTreeObserver().addOnGlobalLayoutListener(globalLayout);
 
         // Get the attributes for the ShowcaseView
         final TypedArray styled = context.getTheme()
@@ -133,7 +144,7 @@ public class ShowcaseView extends RelativeLayout
 
     }
 
-    private boolean hasShot() {
+    public boolean hasShot() {
         return shotStateStore.hasShot();
     }
 
@@ -182,12 +193,19 @@ public class ShowcaseView extends RelativeLayout
     }
 
     private void updateBitmap() {
-        if (bitmapBuffer == null || haveBoundsChanged()) {
-            if(bitmapBuffer != null)
-        		bitmapBuffer.recycle();
-            bitmapBuffer = Bitmap.createBitmap(getMeasuredWidth(), getMeasuredHeight(), Bitmap.Config.ARGB_8888);
+        if (bitmapBuffer == null || haveBoundsChanged())
+        {
+            if(bitmapBuffer != null) {
+                bitmapBuffer.recycle();
+                bitmapBuffer=null;
+            }
 
+            bitmapBuffer = Bitmap.createBitmap(getMeasuredWidth()  > 0 ? getMeasuredWidth()  : 16,
+                    getMeasuredHeight() > 0 ? getMeasuredHeight() : 16,
+                    Bitmap.Config.ARGB_8888);
+//                bitmapBuffer = Bitmap.createBitmap(getMeasuredWidth(), getMeasuredHeight(), Bitmap.Config.ARGB_8888);
         }
+
     }
 
     private boolean haveBoundsChanged() {
@@ -222,6 +240,7 @@ public class ShowcaseView extends RelativeLayout
      */
     public void overrideButtonClick(OnClickListener listener) {
         if (shotStateStore.hasShot()) {
+            hide();
             return;
         }
         if (mEndButton != null) {
@@ -288,6 +307,15 @@ public class ShowcaseView extends RelativeLayout
         shotStateStore.storeShot();
         mEventListener.onShowcaseViewHide(this);
         fadeOutShowcase();
+        getViewTreeObserver().removeOnPreDrawListener(draw);
+        if(Build.VERSION.SDK_INT>15){
+            getViewTreeObserver().removeOnGlobalLayoutListener(globalLayout);
+        }
+        else {
+            getViewTreeObserver().removeGlobalOnLayoutListener(globalLayout);
+        }
+//        removeView(ShowcaseView.this);
+        ((ViewGroup)mActivity.getWindow().getDecorView()).removeView(ShowcaseView.this);
     }
 
     private void clearBitmap() {
@@ -302,8 +330,10 @@ public class ShowcaseView extends RelativeLayout
             @Override
             public void onAnimationEnd() {
                 setVisibility(View.GONE);
+
                 isShowing = false;
                 mEventListener.onShowcaseViewDidHide(ShowcaseView.this);
+
             }
         });
     }
@@ -347,13 +377,17 @@ public class ShowcaseView extends RelativeLayout
         if (!showcaseView.hasShot()) {
             showcaseView.show();
         } else {
-            showcaseView.hideImmediate();
+            showcaseView.hide();
+
+
         }
     }
 
-    private void hideImmediate() {
+    public void hideImmediate() {
         isShowing = false;
         setVisibility(GONE);
+//        removeView(ShowcaseView.this);
+        ((ViewGroup)mActivity.getWindow().getDecorView()).removeView(ShowcaseView.this);
     }
 
     @Override
@@ -518,7 +552,7 @@ public class ShowcaseView extends RelativeLayout
     /**
      * @see com.github.amlcurran.showcaseview.ShowcaseView.Builder#setSingleShot(long)
      */
-    private void setSingleShot(long shotId) {
+    public void setSingleShot(long shotId) {
         shotStateStore.setSingleShot(shotId);
     }
 
@@ -631,6 +665,7 @@ public class ShowcaseView extends RelativeLayout
         @Override
         public void onClick(View v) {
             hide();
+
         }
     };
 
